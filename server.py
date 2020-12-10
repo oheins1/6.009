@@ -31,12 +31,6 @@ def cat_file( path ):
     file = f.read()
   return file
 
-def load_json_file( path ):
-  data = None
-  with open(path, "r") as f:
-    data = json.load(f)
-  return data
-
 ### ----------------------------------
 ### STATIC FILES: GET any path relative to PWD
 ### ----------------------------------
@@ -58,9 +52,9 @@ RPCServerHandler.register_function(lambda d : ls_path( d['path']) , 'ls')
 # returns string contents of file
 RPCServerHandler.register_function(lambda d : cat_file( d['path'] ), 'cat')
 
-# load_json: read json object from a file
-# returns json object encoded by a file
-RPCServerHandler.register_function(lambda d : load_json_file( d['path'] ), 'load_json')
+# load_corpus: read in corpus from a file
+# returns string representing the name of the corpus
+RPCServerHandler.register_function(lambda d : wrapper.load_corpus_file( d['path'] ), 'load_corpus')
 
 # call: call student code
 # returns return value
@@ -69,12 +63,12 @@ RPCServerHandler.register_module("wrapper")
 
 def cleanup():
   # free the socket
-  print("CLEANING UP!")
+  print("CLEANING UP!", flush=True)
   httpd.shutdown()
-  print("CLEANED UP")
+  print("CLEANED UP", flush=True)
 
 atexit.register(cleanup)
 
 # Start the server
-print("serving files and RPCs at port", PORT)
+print("serving files and RPCs at port", PORT, flush=True)
 httpd.serve_forever()

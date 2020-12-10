@@ -10,11 +10,11 @@ class RPCServerHandler(http.server.SimpleHTTPRequestHandler):
 
   def do_GET(self):
     path = self.path.lstrip('/').split('?')[0]
-    print("GET: ", path)
+    print("GET: ", path, flush=True)
     # is the file in the redirects table?
     if path in self.redirects:
       path_to = self.redirects[path]
-      print("REDIRECT TO ", path_to)
+      print("REDIRECT TO ", path_to, flush=True)
       self.send_response(301)
       self.send_header('location', path_to)
       self.end_headers()
@@ -46,7 +46,7 @@ class RPCServerHandler(http.server.SimpleHTTPRequestHandler):
       except:
         # throw a 500, print out error
         traceback.print_exc();
-        print("SOMETHING CRASHED! See above:")
+        print("SOMETHING CRASHED! See above:", flush=True)
         self.send_response(500, 'Internal error')
     else:
       self.send_error(404, 'function not found: ' + path + " , while registered functions are: " + str(self.functions))
@@ -67,7 +67,7 @@ class RPCServerHandler(http.server.SimpleHTTPRequestHandler):
   @classmethod
   def reload_modules(cls):
     for module_name in cls.modules:
-      print("in module %s ..." % module_name)
+      print("in module %s ..." % module_name, flush=True)
       module = __import__(module_name)
       reload(module)
       for f_name in dir(module):
@@ -78,6 +78,6 @@ class RPCServerHandler(http.server.SimpleHTTPRequestHandler):
         # non-functions are ignored
         if not inspect.isfunction(f):
           continue
-        print("registering function %s" % f_name)
+        print("registering function %s" % f_name, flush=True)
         cls.register_function(f, f_name)
 

@@ -1,277 +1,521 @@
 #!/usr/bin/env python3
-import os
+import os.path
 import lab
 import json
 import unittest
+import pickle
+
+import sys
+sys.setrecursionlimit(10000)
 
 TEST_DIRECTORY = os.path.dirname(__file__)
 
+# convert trie into a dictionary...
+def dictify(t):
+    out = {'value': t.value, 'children': {}}
+    for ch, child in t.children.items():
+        out['children'][ch] = dictify(child)
+    return out
 
-class TestTiny(unittest.TestCase):
-    def setUp(self):
-        """ Load actor/movie database """
-        filename = 'resources/tiny.json'
-        #filename = 'resources/large.json'
-        with open(filename, 'r') as f:
-            self.data = json.load(f)
+# ...and back
+def from_dict(d):
+    t = lab.Trie()
+    for k, v in d.items():
+        t.set(k, v)
+    return t
 
-    def test_bacon_number_0(self):
-        '''tests n=1'''
-        n = 0
-        expected = {4724}
-        result = lab.get_actors_with_bacon_number(self.data, n)
-        self.assertEqual(result, expected)
-        
+# make sure the keys are not explicitly stored in any node
+def any_key_stored(trie, keys):
+    keys = [tuple(k) for k in keys]
+    for i in dir(trie):
+        try:
+            val = tuple(getattr(trie, i))
+        except:
+            continue
+        for j in keys:
+            if j == val:
+                return repr(i), repr(j)
+    for child in trie.children.values():
+        key_stored = any_key_stored(child, keys)
+        if key_stored:
+            return key_stored
+    return None
 
-    def test_bacon_number_1(self):
-        '''tests n =1
-        '''
-        n = 1
-        expected = {2876, 1532}
-        result = lab.get_actors_with_bacon_number(self.data, n)
-        self.assertEqual(result, expected)
+# read in expected result
+def read_expected(fname):
+    with open(os.path.join(TEST_DIRECTORY, 'resources', 'testing_data', fname), 'rb') as f:
+        return pickle.load(f)
 
-    def test_bacon_number_2(self):
-        '''
-        tests n = 2
-        '''
-        n = 2
-        expected = {1640}
-        result = set(lab.get_actors_with_bacon_number(self.data, n))
-        self.assertEqual(result, expected)
+class Test_1_Trie(unittest.TestCase):
+    def test_01_set(self):
+        trie = lab.Trie()
+        trie.set('cat', 'kitten')
+        trie.set('car', 'tricycle')
+        trie.set('carpet', 'rug')
+        expect = read_expected('1.pickle')
+        self.assertTrue(dictify(trie) == expect, msg="Your trie is incorrect.")
+        self.assertEqual(any_key_stored(trie, ('cat', 'car', 'carpet')), None)
 
+        t = lab.Trie()
+        t.set('a', 1)
+        t.set('an', 1)
+        t.set('ant', 1)
+        t.set('anteater', 1)
+        t.set('ants', 1)
+        t.set('a', 2)
+        t.set('an', 2)
+        t.set('a', 3)
+        expect = read_expected('2.pickle')
+        self.assertTrue(dictify(t) == expect, msg="Your trie is incorrect.")
+        self.assertEqual(any_key_stored(t, ('an', 'ant', 'anteater', 'ants')), None)
+        with self.assertRaises(TypeError):
+            t.set((1, 2, 3), 20)
 
-    def test_bacon_number_3(self):
-        '''tests n = 3
-        '''
-        n = 3
-        expected = set()
-        result = set(lab.get_actors_with_bacon_number(self.data, n))
-        self.assertEqual(result, expected)
+        t = lab.Trie()
+        t.set('man', 'person')
+        t.set('mat', 'object')
+        t.set('mattress', 'thing you sleep on')
+        t.set('map', 'pam')
+        t.set('me', 'you')
+        t.set('met', 'tem')
+        t.set('a', '?')
+        t.set('map', -1000)
+        expect = read_expected('3.pickle')
+        self.assertTrue(dictify(t) == expect, msg="Your trie is incorrect.")
+        self.assertEqual(any_key_stored(t, ('man', 'mat', 'mattress', 'map', 'me', 'met', 'map')), None)
+        with self.assertRaises(TypeError):
+            t.set(('something',), 'pam')
 
+    def test_02_get(self):
+        d = {'name': 'John', 'favorite_numbers': [2, 4, 3], 'age': 39}
+        t = from_dict(d)
+        self.assertEqual(dictify(t), read_expected('person.pickle'))
+        self.assertTrue(all(t.get(k) == d[k] for k in d))
+        self.assertEqual(any_key_stored(t, tuple(d)), None)
 
-    def test_get_bacon_path(self):
-        '''tests a valid path betwen bacon and 1640
-        '''
-        actor_id = 1640
-        expected = [4724, 2876, 1640]
-        result = lab.get_bacon_path(self.data, actor_id)
-        self.assertEqual(result, expected)
+        c = {'make': 'Toyota', 'model': 'Corolla', 'year': 2006, 'color': 'beige'}
+        t = from_dict(c)
+        self.assertEqual(dictify(t), read_expected('car.pickle'))
+        self.assertTrue(all(t.get(k) == c[k] for k in c))
+        self.assertEqual(any_key_stored(t, tuple(c)), None)
+        for i in ('these', 'keys', 'dont', 'exist'):
+            with self.assertRaises(KeyError):
+                x = t.get(i)
+        with self.assertRaises(TypeError):
+            x = t.get((1, 2, 3))
 
-    def test_path(self):
-        '''tests a valid path between 2 non-bacon actors
-        '''
-        actor_id_1 = 1640
-        actor_id_2 = 2876
-        expected = [1640, 2876]
-        len_expected = 1
-        result = lab.get_path(self.data, actor_id_1, actor_id_2)
-        len_result = -1 if result is None else len(result)-1
-        self.assertTrue(valid_path(self.data, result))
-        self.assertEqual(len_result, len_expected)
-        self.assertEqual(result[0], actor_id_1)
-        self.assertEqual(result[-1], actor_id_2)
-        self.assertEqual(result, expected)
+    def test_03_contains(self):
+        d = {'name': 'John', 'favorite_numbers': [2, 4, 3], 'age': 39}
+        t = from_dict(d)
+        self.assertEqual(dictify(t), read_expected('person.pickle'))
+        self.assertTrue(all(t.contains(i) for i in d))
 
-class TestActedTogether(unittest.TestCase):
-    def setUp(self):
-        """ Load actor/movie database """
-        filename = 'resources/small.json'
-        #filename = 'resources/large.json'
-        with open(filename, 'r') as f:
-            self.data = json.load(f)
+        c = {'make': 'Toyota', 'model': 'Corolla', 'year': 2006, 'color': 'beige'}
+        t = from_dict(c)
+        self.assertEqual(dictify(t), read_expected('car.pickle'))
+        self.assertTrue(all(t.contains(i) for i in c))
+        badkeys = ('these', 'keys', 'dont', 'exist', 'm', 'ma', 'mak', 'mo',
+                   'mod', 'mode', 'ye', 'yea', 'y', '', 'car.pickle')
+        self.assertFalse(any(t.contains(i) for i in badkeys))
 
-    def test_01(self):
-        # Simple test, two actors who acted together
-        actor1 = 4724
-        actor2 = 9210
-        self.assertTrue(lab.did_x_and_y_act_together(self.data, actor1, actor2))
+    def test_04_items(self):
+        t = lab.Trie()
+        t.set('man', 'person')
+        t.set('mat', 'object')
+        t.set('mattress', 'thing you sleep on')
+        t.set('map', 'pam')
+        t.set('me', 'you')
+        t.set('met', 'tem')
+        t.set('a', '?')
+        t.set('map', -1000)
+        l = sorted(t.items())
+        expected = [('a', '?'), ('man', 'person'), ('map', -1000), ('mat', 'object'),
+                    ('mattress', 'thing you sleep on'), ('me', 'you'), ('met', 'tem')]
+        self.assertEqual(l, expected)
 
-    def test_02(self):
-        # Simple test, two actors who had not acted together
-        actor1 = 4724
-        actor2 = 16935
-        self.assertFalse(lab.did_x_and_y_act_together(self.data, actor1, actor2))
+    def test_05_delete(self):
+        c = {'make': 'Toyota', 'model': 'Corolla', 'year': 2006, 'color': 'beige'}
+        t = from_dict(c)
+        self.assertEqual(dictify(t), read_expected('car.pickle'))
+        t.delete('color')
+        self.assertEqual(set(t.items()), set(c.items()) - {('color', 'beige')})
+        t.set('color', 'silver')  # new paint job
+        for i in t.items():
+            if i[0] != 'color':
+                self.assertIn(i, c.items())
+            else:
+                self.assertEqual(i[1], 'silver')
 
-    def test_03(self):
-        # Simple test, same actor
-        actor1 = 4724
-        actor2 = 4724
-        self.assertTrue(lab.did_x_and_y_act_together(self.data, actor1, actor2))
-
-    def test_04(self):
-        # Simple test, created by oliver
-        actor1 = 4724
-        actor2 = 558335
-        self.assertFalse(lab.did_x_and_y_act_together(self.data, actor1, actor2))
-
-
-class TestBaconNumber(unittest.TestCase):
-    def setUp(self):
-        """ Load actor/movie database """
-        filename = 'resources/small.json'
-        with open(filename, 'r') as f:
-            self.data = json.load(f)
-
-    def test_04(self):
-        # Actors with Bacon number of 2
-        n = 2
-        expected = {1640, 1811, 2115, 2283, 2561, 2878, 3085, 4025, 4252, 4765,
-                    6541, 9827, 11317, 14104, 16927, 16935, 19225, 33668, 66785,
-                    90659, 183201, 550521, 1059002, 1059003, 1059004, 1059005,
-                    1059006, 1059007, 1232763}
-        result = lab.get_actors_with_bacon_number(self.data, n)
-        self.assertTrue(isinstance(result, set))
-        self.assertEqual(result, expected)
-
-    def test_05(self):
-        # Actors with Bacon number of 3
-        n = 3
-        expected = {52, 1004, 1248, 2231, 2884, 4887, 8979, 10500, 12521,
-                    14792, 14886, 15412, 16937, 17488, 19119, 19207, 19363,
-                    20853, 25972, 27440, 37252, 37612, 38351, 44712, 46866,
-                    46867, 48576, 60062, 75429, 83390, 85096, 93138, 94976,
-                    109625, 113777, 122599, 126471, 136921, 141458, 141459,
-                    141460, 141461, 141495, 146634, 168638, 314092, 349956,
-                    558335, 572598, 572599, 572600, 572601, 572602, 572603,
-                    583590, 931399, 933600, 1086299, 1086300, 1168416, 1184797,
-                    1190297, 1190298, 1190299, 1190300}
-        result = lab.get_actors_with_bacon_number(self.data, n)
-        self.assertTrue(isinstance(result, set))
-        self.assertEqual(result, expected)
-
-
-class TestActorPath(unittest.TestCase):
-    def setUp(self):
-        """ Load actor/movie database """
-        with open('resources/small.json', 'r') as f:
-            self.db_small = json.load(f)
-        with open('resources/large.json', 'r') as f:
-            self.db_large = json.load(f)
-
-    def test_06(self):
-        # Actor path, large database, length of 7 (8 actors, 7 movies)
-        actor_1 = 1345462
-        actor_2 = 89614
-        len_expected = 7
-        result = lab.get_path(self.db_large, actor_1, actor_2)
-        len_result = -1 if result is None else len(result)-1
-        self.assertTrue(valid_path(self.db_large, result))
-        self.assertEqual(len_result, len_expected)
-        self.assertEqual(result[0], actor_1)
-        self.assertEqual(result[-1], actor_2)
-
-    def test_07(self):
-        # Actor path, large database, length of 4 (5 actors, 4 movies)
-        actor_1 = 100414
-        actor_2 = 57082
-        len_expected = 4
-        result = lab.get_path(self.db_large, actor_1, actor_2)
-        len_result = -1 if result is None else len(result)-1
-        self.assertTrue(valid_path(self.db_large, result))
-        self.assertEqual(len_result, len_expected)
-        self.assertEqual(result[0], actor_1)
-        self.assertEqual(result[-1], actor_2)
-
-    def test_08(self):
-        # Bacon path, large database, length of 7 (8 actors, 7 movies)
-        actor_1 = 43011
-        actor_2 = 1379833
-        len_expected = 7
-        result = lab.get_path(self.db_large, actor_1, actor_2)
-        len_result = -1 if result is None else len(result)-1
-        self.assertTrue(valid_path(self.db_large, result))
-        self.assertEqual(len_result, len_expected)
-        self.assertEqual(result[0], actor_1)
-        self.assertEqual(result[-1], actor_2)
-
-    def test_09(self):
-        # Bacon path, large database, does not exist
-        actor_1 = 43011
-        actor_2 = 1204555
-        expected = None
-        result = lab.get_path(self.db_large, actor_1, actor_2)
-        self.assertEqual(result, expected)
+        t = lab.Trie()
+        t.set('man', 'person')
+        t.set('mat', 'object')
+        t.set('mattress', 'thing you sleep on')
+        t.set('map', 'pam')
+        t.set('me', 'you')
+        t.set('met', 'tem')
+        t.set('a', '?')
+        t.set('map', -1000)
+        l = sorted(t.items())
+        expected = [('a', '?'), ('man', 'person'), ('map', -1000), ('mat', 'object'),
+                    ('mattress', 'thing you sleep on'), ('me', 'you'), ('met', 'tem')]
+        self.assertEqual(l, expected)
+        t.delete('mat')
+        l = sorted(t.items())
+        expected = [('a', '?'), ('man', 'person'), ('map', -1000),
+                    ('mattress', 'thing you sleep on'), ('me', 'you'), ('met', 'tem')]
+        self.assertEqual(l, expected)
 
 
-class TestBaconPath(unittest.TestCase):
-    """ These tests check the actual path for validity, and to do so in a
-    reasonable time requires a fast checking database. So this reveals
-    both validate path and convert. It's probably better to put some
-    subset of these into a web check only. Maybe to have a couple of
-    tests here with a single unique path.
-    """
-    def setUp(self):
-        """ Load actor/movie database """
-        with open('resources/small.json', 'r') as f:
-            self.db_small = json.load(f)
-        with open('resources/large.json', 'r') as f:
-            self.db_large = json.load(f)
-
-    def test_10(self):
-        # Bacon path, small database, path does not exist
-        actor_id = 2876669
-        expected = None
-        result = lab.get_bacon_path(self.db_small, actor_id)
-        self.assertEqual(result, expected)
-
-    def test_11(self):
-        # Bacon path, small database, length of 3 (4 actors, 3 movies)
-        actor_id = 46866
-        len_expected = 3
-        result = lab.get_bacon_path(self.db_small, actor_id)
-        len_result = -1 if result is None else len(result)-1
-        self.assertTrue(valid_path(self.db_small, result))
-        self.assertEqual(len_result, len_expected)
-        self.assertEqual(result[0], 4724)
-        self.assertEqual(result[-1], actor_id)
-
-    def test_12(self):
-        # Bacon path, large database, length of 2 (3 actors, 2 movies)
-        actor_id = 1204
-        len_expected = 2
-        result = lab.get_bacon_path(self.db_large, actor_id)
-        len_result = -1 if result is None else len(result)-1
-        self.assertTrue(valid_path(self.db_large, result))
-        self.assertEqual(len_result, len_expected)
-        self.assertEqual(result[0], 4724)
-        self.assertEqual(result[-1], actor_id)
-
-    def test_13(self):
-        # Bacon path, large database, length of 4 (5 actors, 4 movies)
-        actor_id = 197897
-        len_expected = 4
-        result = lab.get_bacon_path(self.db_large, actor_id)
-        len_result = -1 if result is None else len(result)-1
-        self.assertTrue(valid_path(self.db_large, result))
-        self.assertEqual(len_result, len_expected)
-        self.assertEqual(result[0], 4724)
-        self.assertEqual(result[-1], actor_id)
-
-    def test_14(self):
-        # Bacon path, large database, length of 6 (7 actors, 6 movies)
-        actor_id = 1345462
-        len_expected = 6
-        result = lab.get_bacon_path(self.db_large, actor_id)
-        # here, we compute the result twice, to test for mutation of the db
-        result = lab.get_bacon_path(self.db_large, actor_id)
-        len_result = -1 if result is None else len(result)-1
-        self.assertTrue(valid_path(self.db_large, result))
-        self.assertEqual(len_result, len_expected)
-        self.assertEqual(result[0], 4724)
-        self.assertEqual(result[-1], actor_id)
-
-    def test_15(self):
-        # Bacon path, large database, does not exist
-        actor_id = 1204555
-        expected = None
-        result = lab.get_bacon_path(self.db_large, actor_id)
-        self.assertEqual(result, expected)
 
 
-def valid_path(d, p):
-    x = {frozenset(i[:-1]) for i in d}
-    return all(frozenset(i) in x for i in zip(p, p[1:]))
+class Test_2_TupleTrie(unittest.TestCase):
+    def test_01_set(self):
+        trie = lab.Trie()
+        trie.set((1, 2, 3), 'kitten')
+        trie.set((1, 2, 0), 'tricycle')
+        trie.set((1, 2, 0, 1), 'rug')
+        expect = read_expected('4.pickle')
+        self.assertTrue(dictify(trie) == expect, msg="Your trie is incorrect.")
+        self.assertEqual(any_key_stored(trie, ((1, 2, 3), (1, 2, 0), (1, 2, 0, 1))), None)
+
+        t = lab.Trie()
+        t.set((7, 8, 9), 1)
+        t.set((7, 8, 9, 'hello'), 1)
+        t.set((7, 8, 9, 'hello', (1, 2)), 1)
+        t.set((1, ), 1)
+        t.set((7, ), 1)
+        t.set((7, 8, 9), 2)
+        t.set((-1, -2, -3), 2)
+        t.set(('a', ), 3)
+        expect = read_expected('5.pickle')
+        self.assertTrue(dictify(t) == expect, msg="Your trie is incorrect.")
+        self.assertEqual(any_key_stored(t, ((7, 8, 9), (7, 8, 9, 'hello'),
+                                               (7, 8, 9, 'hello', (1, 2)), (1, ),
+                                               (7, ), (-1, -2, -3), ('a', ))), None)
+
+    def test_02_get(self):
+        d = {'name': 'John', 'favorite_numbers': [2, 4, 3], 'age': 39}
+        d = {tuple(k): v for k,v in d.items()}
+        t = from_dict(d)
+        self.assertEqual(dictify(t), read_expected('tuple_person.pickle'))
+        self.assertTrue(all(t.get(k) == d[k] for k in d))
+        self.assertEqual(any_key_stored(t, tuple(d)), None)
+        with self.assertRaises(TypeError):
+            t.set('string', 20)
+
+        c = {'make': 'Toyota', 'model': 'Corolla', 'year': 2006, 'color': 'beige'}
+        c = {tuple(k): v for k,v in c.items()}
+        t = from_dict(c)
+        self.assertEqual(dictify(t), read_expected('tuple_car.pickle'))
+        self.assertTrue(all(t.get(k) == c[k] for k in c))
+        self.assertEqual(any_key_stored(t, tuple(c)), None)
+        for i in ('these', 'keys', 'dont', 'exist'):
+            with self.assertRaises(KeyError):
+                x = t.get(tuple(i))
+        with self.assertRaises(TypeError):
+            t.set(('yarn', 'twine', 'thread')[0], 20)
+
+    def test_03_contains(self):
+        d = {'name': 'John', 'favorite_numbers': [2, 4, 3], 'age': 39}
+        d = {tuple(k): v for k,v in d.items()}
+        t = from_dict(d)
+        self.assertEqual(dictify(t), read_expected('tuple_person.pickle'))
+        self.assertTrue(all(t.contains(i) for i in d))
+        with self.assertRaises(TypeError):
+            x = t.get('string')
+
+        c = {'make': 'Toyota', 'model': 'Corolla', 'year': 2006, 'color': 'beige'}
+        c = {tuple(k): v for k,v in c.items()}
+        t = from_dict(c)
+        self.assertEqual(dictify(t), read_expected('tuple_car.pickle'))
+        self.assertTrue(all(t.contains(i) for i in c))
+        badkeys = ('these', 'keys', 'dont', 'exist', 'm', 'ma', 'mak', 'mo',
+                   'mod', 'mode', 'ye', 'yea', 'y', '', 'car.pickle')
+        self.assertFalse(any(t.contains(tuple(i)) for i in badkeys))
+        with self.assertRaises(TypeError):
+            x = t.get(('yarn', 'twine', 'thread')[0])
+
+    def test_04_items(self):
+        t = lab.Trie()
+        t.set((7, 8, 9), 1)
+        t.set((7, 8, 9, 'hello'), 1)
+        t.set((7, 8, 9, 'hello', (1, 2)), 1)
+        t.set((1, ), 1)
+        t.set((7, ), 1)
+        t.set((7, 8, 9), 2)
+        t.set((-1, -2, -3), 2)
+        t.set((2, ), 3)
+        l = sorted(t.items())
+        expected = [((-1, -2, -3), 2), ((1,), 1), ((2,), 3), ((7,), 1),
+                    ((7, 8, 9), 2), ((7, 8, 9, 'hello'), 1), ((7, 8, 9, 'hello', (1, 2)), 1)]
+        self.assertEqual(l, expected)
+
+    def test_05_delete(self):
+        c = {'make': 'Toyota', 'model': 'Corolla', 'year': 2006, 'color': 'beige'}
+        c = {tuple(k): v for k,v in c.items()}
+        t = from_dict(c)
+        self.assertEqual(dictify(t), read_expected('tuple_car.pickle'))
+        t.delete(tuple('color'))
+        self.assertEqual(set(t.items()), set(c.items()) - {(tuple('color'), 'beige')})
+        t.set(tuple('color'), 'silver')  # new paint job
+        for i in t.items():
+            if i[0] != tuple('color'):
+                self.assertIn(i, c.items())
+            else:
+                self.assertEqual(i[1], 'silver')
+
+        t = lab.Trie()
+        t.set((7, 8, 9), 1)
+        t.set((7, 8, 9, 'hello'), 1)
+        t.set((7, 8, 9, 'hello', (1, 2)), 1)
+        t.set((1, ), 1)
+        t.set((7, ), 1)
+        t.set((7, 8, 9), 2)
+        t.set((-1, -2, -3), 2)
+        t.set((2, ), 3)
+        l = sorted(t.items())
+        expected = [((-1, -2, -3), 2), ((1,), 1), ((2,), 3), ((7,), 1),
+                    ((7, 8, 9), 2), ((7, 8, 9, 'hello'), 1), ((7, 8, 9, 'hello', (1, 2)), 1)]
+        self.assertEqual(l, expected)
+        t.delete((7, 8, 9))
+        l = sorted(t.items())
+        expected = [((-1, -2, -3), 2), ((1,), 1), ((2,), 3), ((7,), 1),
+                    ((7, 8, 9, 'hello'), 1), ((7, 8, 9, 'hello', (1, 2)), 1)]
+        self.assertEqual(l, expected)
+
+
+class Test_3_Corpora(unittest.TestCase):
+    def test_01_word_trie(self):
+        # small test
+        l = lab.make_word_trie('toonces was a cat who could drive a car very fast until he crashed.')
+        expected = read_expected('6.pickle')
+        self.assertEqual(dictify(l), expected)
+
+        l = lab.make_word_trie('a man at the market murmered that he had met a mermaid. '
+                               'mark didnt believe the man had met a mermaid.')
+        expected = read_expected('7.pickle')
+        self.assertEqual(dictify(l), expected)
+
+        l = lab.make_word_trie('what happened to the cat who had eaten the ball of yarn?  she had mittens!')
+        expected = read_expected('8.pickle')
+        self.assertEqual(dictify(l), expected)
+
+
+    def test_02_phrase_trie(self):
+        # small test
+        l = lab.make_phrase_trie('toonces was a cat who could drive a car very fast until he crashed.')
+        expected = read_expected('9.pickle')
+        self.assertEqual(dictify(l), expected)
+
+        l = lab.make_phrase_trie('a man at the market murmered that he had met a mermaid. '
+                                 'i dont believe that he had met a mermaid.')
+        expected = read_expected('10.pickle')
+        self.assertEqual(dictify(l), expected)
+
+        l = lab.make_phrase_trie(('What happened to the cat who ate the ball of yarn?  She had mittens!  '
+                                   'What happened to the frog who was double parked?  He got toad!  '
+                                   'What happened yesterday?  I dont remember.'))
+        expected = read_expected('11.pickle')
+        self.assertEqual(dictify(l), expected)
+
+
+    def test_03_big_corpora(self):
+        for bigtext in ('holmes', 'earnest', 'frankenstein'):
+            with open(os.path.join(TEST_DIRECTORY, 'resources', 'testing_data', '%s.txt' % bigtext), encoding='utf-8') as f:
+                text = f.read()
+                w = lab.make_word_trie(text)
+                p = lab.make_phrase_trie(text)
+
+                w_e = read_expected('%s_words.pickle' % bigtext)
+                p_e = read_expected('%s_phrases.pickle' % bigtext)
+
+                self.assertEqual(dictify(w), w_e, 'word trie does not match for '+bigtext)
+                self.assertEqual(dictify(p), p_e, 'phrase trie does not match for '+bigtext)
+
+
+class Test_4_AutoComplete(unittest.TestCase):
+    def test_01_autocomplete(self):
+        # Autocomplete on simple trie with less than N valid words
+        trie = lab.make_word_trie("cat car carpet")
+        result = lab.autocomplete(trie, 'car', 3)
+        self.assertIsInstance(result,list,"result not a list.")
+        for w in result:
+            self.assertIsInstance(w,str,"expecting list of strings.")
+        result.sort()
+        expect = ["car", "carpet"]
+        self.assertEqual(result,expect,msg="incorrect result from autocomplete.")
+
+        trie = lab.make_word_trie("a an ant anteater a an ant a")
+        result = lab.autocomplete(trie, 'a', 2)
+        self.assertIsInstance(result,list,"result not a list.")
+        for w in result:
+            self.assertIsInstance(w,str,"expecting list of strings.")
+        result.sort()
+        expect_one_of = [["a","an"],["a","ant"]]
+        self.assertIn(result,expect_one_of,msg="incorrect result from autocomplete.")
+
+        trie = lab.make_word_trie("man mat mattress map me met a man a a a map man met")
+        result = lab.autocomplete(trie, 'm', 3)
+        self.assertIsInstance(result,list,"result not a list.")
+        for w in result:
+            self.assertIsInstance(w,str,"expecting list of strings.")
+        result.sort()
+        expect = ["man","map","met"]
+        self.assertEqual(result,expect,msg="incorrect result from autocomplete.")
+
+        trie = lab.make_word_trie("hello hell history")
+        result = lab.autocomplete(trie, 'help', 3)
+        self.assertIsInstance(result,list,"result not a list.")
+        for w in result:
+            self.assertIsInstance(w,str,"expecting list of strings.")
+        expect = []
+        self.assertEqual(result,expect,msg="incorrect result from autocomplete.")
+        with self.assertRaises(TypeError):
+            result = lab.autocomplete(trie, ('tuple', ), None)
+
+    def test_02_big_autocomplete(self):
+        nums = {'t': [0, 1, 25, None],
+                'th': [0, 1, 21, None],
+                'the': [0, 5, 21, None],
+                'thes': [0, 1, 21, None]}
+        with open(os.path.join(TEST_DIRECTORY, 'resources', 'testing_data', 'frankenstein.txt'), encoding='utf-8') as f:
+            text = f.read()
+        w = lab.make_word_trie(text)
+        for i in sorted(nums):
+            for n in nums[i]:
+                result = lab.autocomplete(w, i, n)
+                expected = read_expected('frank_autocomplete_%s_%s.pickle' % (i, n))
+                self.assertEqual(len(result), len(expected), msg=('missing' if len(result) < len(expected)\
+                    else 'too many') + ' autocomplete results for ' + repr(i) + ' with macount = ' + str(n))
+                self.assertEqual(set(result), set(expected), msg='autocomplete included ' + repr(set(result) - set(expected))\
+                    + ' instead of ' + repr(set(expected) - set(result)) + ' for ' + repr(i) + ' with maxcount = '+str(n))
+        with self.assertRaises(TypeError):
+            result = lab.autocomplete(w, ('tuple', ), None)
+
+    def test_03_big_autocomplete_2(self):
+        with open(os.path.join(TEST_DIRECTORY, 'resources', 'testing_data', 'frankenstein.txt'), encoding='utf-8') as f:
+            text = f.read()
+        w = lab.make_word_trie(text)
+        the_word = 'accompany'
+        for ix in range(len(the_word)+1):
+            test = the_word[:ix]
+            result = lab.autocomplete(w, test)
+            expected = read_expected('frank_autocomplete_%s_%s.pickle' % (test, None))
+            self.assertEqual(len(result), len(expected), msg=('missing' if len(result) < len(expected)\
+                else 'too many') + ' autocomplete results for ' + repr(test) + ' with maxcount = None')
+            self.assertEqual(set(result), set(expected), msg='autocomplete included ' + repr(set(result) - set(expected))\
+                + ' instead of ' + repr(set(expected) - set(result)) + ' for ' + repr(test) + ' with maxcount = None')
+        with self.assertRaises(TypeError):
+            result = lab.autocomplete(w, ('tuple', ), None)
+
+
+    def test_04_big_phrase_autocomplete(self):
+        nums = {('i', ): [0, 1, 2, 5, 11, None],
+                ('i', 'do'): [0, 1, 2, 5, 8, None],
+                ('i', 'do', 'not', 'like', 'them'): [0, 1, 2, 4, 100, None],
+                ('i', 'do', 'not', 'like', 'them', 'here'): [0, 1, 2, 100, None]}
+        with open(os.path.join(TEST_DIRECTORY, 'resources', 'testing_data', 'seuss.txt'), encoding='utf-8') as f:
+            text = f.read()
+        p = lab.make_phrase_trie(text)
+        for i in sorted(nums):
+            for n in nums[i]:
+                result = lab.autocomplete(p, i, n)
+                expected = read_expected('seuss_autocomplete_%s_%s.pickle' % (len(i), n))
+                self.assertEqual(len(result), len(expected), msg=('missing' if len(result) < len(expected)\
+                    else 'too many') + ' autocomplete results for ' + repr(i) + ' with macount = ' + str(n))
+                self.assertEqual(set(result), set(expected), msg='autocomplete included ' + repr(set(result) - set(expected))\
+                    + ' instead of ' + repr(set(expected) - set(result)) + ' for ' + repr(i) + ' with maxcount = '+str(n))
+
+        with self.assertRaises(TypeError):
+            result = lab.autocomplete(p, 'string', None)
+
+
+class Test_5_AutoCorrect(unittest.TestCase):
+    def test_01_autocorrect(self):
+        # Autocorrect on cat in small corpus
+        trie = lab.make_word_trie("cats cattle hat car act at chat crate act car act")
+        result = lab.autocorrect(trie, 'cat',4)
+        self.assertIsInstance(result,list,"result not a list.")
+        for w in result:
+            self.assertIsInstance(w,str,"expecting list of strings.")
+        result.sort()
+        expect = ["act", "car", "cats", "cattle"]
+        self.assertEqual(result,expect,msg="incorrect result from autocorrect.")
+
+    def test_02_big_autocorrect(self):
+        nums = {'thin': [0, 8, 10, None],
+                'tom': [0, 2, 4, None],
+                'mon': [0, 2, 15, 17, 20, None]}
+        with open(os.path.join(TEST_DIRECTORY, 'resources', 'testing_data', 'frankenstein.txt'), encoding='utf-8') as f:
+            text = f.read()
+        w = lab.make_word_trie(text)
+        for i in sorted(nums):
+            for n in nums[i]:
+                result = lab.autocorrect(w, i, n)
+                expected = read_expected('frank_autocorrect_%s_%s.pickle' % (i, n))
+                self.assertEqual(len(result), len(expected), msg=('missing' if len(result) < len(expected)\
+                    else 'too many') + ' autocorrect results for ' + repr(i) + ' with macount = ' + str(n))
+                self.assertEqual(set(result), set(expected), msg='autocorrect included ' + repr(set(result) - set(expected))\
+                    + ' instead of ' + repr(set(expected) - set(result)) + ' for ' + repr(i) + ' with maxcount = '+str(n))
+
+
+class Test_6_Filter(unittest.TestCase):
+    def test_01_filter(self):
+        # Filter to select all words in trie
+        trie = lab.make_word_trie("man mat mattress map me met a man a a a map man met")
+        result = lab.word_filter(trie, '*')
+        self.assertIsInstance(result,list,"result not a list.")
+        result.sort()
+        expect = [("a", 4), ("man", 3), ("map", 2), ("mat", 1), ("mattress", 1), ("me", 1), ("met", 2)]
+        self.assertEqual(result,expect,msg="incorrect result from filter.")
+
+        # All three-letter words in trie
+        result = lab.word_filter(trie, '???')
+        self.assertIsInstance(result,list,"result not a list.")
+        result.sort()
+        expect = [("man", 3), ("map", 2), ("mat", 1), ("met", 2)]
+        self.assertEqual(result,expect,msg="incorrect result from filter.")
+
+        # Words beginning with 'mat'
+        result = lab.word_filter(trie, 'mat*')
+        self.assertIsInstance(result,list,"result not a list.")
+        result.sort()
+        expect = [("mat", 1), ("mattress", 1)]
+        self.assertEqual(result,expect,msg="incorrect result from filter.")
+
+        # Words beginning with 'm', third letter is t
+        result = lab.word_filter(trie, 'm?t*')
+        self.assertIsInstance(result,list,"result not a list.")
+        result.sort()
+        expect = [("mat", 1), ("mattress", 1), ("met", 2)]
+        self.assertEqual(result,expect,msg="incorrect result from filter.")
+
+        # Words with at least 4 letters
+        result = lab.word_filter(trie, '*????')
+        self.assertIsInstance(result,list,"result not a list.")
+        result.sort()
+        expect = [("mattress", 1)]
+        self.assertEqual(result,expect,msg="incorrect result from filter.")
+
+        # All words
+        result = lab.word_filter(trie, '**')
+        self.assertIsInstance(result,list,"result not a list.")
+        result.sort()
+        expect = [("a", 4), ("man", 3), ("map", 2), ("mat", 1), ("mattress", 1), ("me", 1), ("met", 2)]
+        self.assertEqual(result,expect,msg="incorrect result from filter.")
+
+    def test_02_big_filter(self):
+        patterns = ('*ing', '*ing?', '****ing', '**ing**', '????', 'mon*',
+                    '*?*?*?*', '*???')
+        with open(os.path.join(TEST_DIRECTORY, 'resources', 'testing_data', 'frankenstein.txt'), encoding='utf-8') as f:
+            text = f.read()
+        w = lab.make_word_trie(text)
+        for ix, i in enumerate(patterns):
+            result = lab.word_filter(w, i)
+            expected = read_expected('frank_filter_%s.pickle' % (ix, ))
+            self.assertEqual(len(result), len(expected), msg='incorrect word_filter of '+repr(i))
+            self.assertEqual(set(result), set(expected), msg='incorrect word_filter of '+repr(i))
+
 
 if __name__ == '__main__':
     res = unittest.main(verbosity=3, exit=False)

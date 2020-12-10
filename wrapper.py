@@ -1,61 +1,52 @@
-import lab, json, traceback, time
+import lab, json, traceback
+import json, traceback
+import copy
+import os
 from importlib import reload
-reload(lab)  # this forces the student code to be reloaded when page is refreshed
+reload(lab) # this forces the student code to be reloaded when page is refreshed
+
+corpusTries = {}
+
+def load_corpus_file( path ):
+  corpus_name = ''.join(os.path.basename(path).split('.')[:-1])
+  with open(path, encoding="utf-8") as f:
+    text = f.read()
+    wordTrie = lab.make_word_trie(text)
+    sentenceTrie = lab.make_phrase_trie(text)
+  corpusTries[corpus_name] = (wordTrie, sentenceTrie)
+  return corpus_name
+
+def complete(args):
+  try:
+    return ('ok', get_completions(args))
+  except:
+    return ('error',traceback.format_exc())
 
 
-def run_test(input_data):
-    running_time = time.time()
+def get_completions(args):
+  tries = corpusTries[args["corpus"]]
+  mode = args["trie_mode"]
+  if mode in ("words", "pattern"):
+    trie = tries[0]
+    prefix = args["prefix"]
+  else:
+    trie = tries[1]
+    prefix = tuple(args["prefix"].split())
+  max_results = args["max_results"]
+  if max_results == 0:
+    max_results = None
+  if mode == "pattern":
+    r = [word for word, freq in lab.word_filter(trie, prefix)[:max_results]]
+  elif args["autocorrect"] and mode == "words":
+    r = lab.autocorrect(trie, prefix, max_results)
+  else:
+    if mode == "sentences":
+      r = [' '.join(result) for result in lab.autocomplete(trie, prefix, max_results)]
+    else:
+      r = lab.autocomplete(trie, prefix, max_results)
+  return r
 
-    # Demux to the correct function
-    try:
-        if input_data["function"] == "pair":
-            result = lab.did_x_and_y_act_together(small_data, input_data["actor_1"], input_data["actor_2"])
-
-        # Actors with a given bacon number
-        elif input_data["function"] == "set":
-            result = lab.get_actors_with_bacon_number(small_data, input_data["n"])
-
-        # Paths in a small database
-        elif input_data["function"] == "path_small":
-            result = lab.get_bacon_path(small_data, input_data["actor_id"])
-
-        # Paths in a large database
-        elif input_data["function"] == "path":
-            result = lab.get_bacon_path(large_data, input_data["actor_id"])
-
-        running_time = time.time() - running_time
-
-        return (running_time, result)
-    except Exception:
-        return ('error',traceback.format_exc())
-
-
-
-# These functions are required by the UI
-def better_together(d):
-    return lab.did_x_and_y_act_together(small_data, d["actor_1"], d["actor_2"])
-
-
-def bacon_number(d):
-    return list(lab.get_actors_with_bacon_number(small_data, d["n"]))
-
-
-def bacon_path(d):
-    return lab.get_bacon_path(small_data, d["actor_name"])
-
-
-# State that is used by both ui and test code
-small_data = None
-large_data = None
-
-
-## Initialization
 def init():
-    global small_data
-    global large_data
-    with open('./resources/small.json', 'r') as f:
-            small_data = json.load(f)
-    with open('./resources/large.json', 'r') as f:
-            large_data = json.load(f)
+  return None
 
-init()
+  
